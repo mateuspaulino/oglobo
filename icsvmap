@@ -1,0 +1,334 @@
+;(function($, window, document, undefined) {
+
+/*RegExp.escape= function(s) {
+    return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+};*/
+
+var pluginName = 'icsvmap', 
+    defaults = {
+		csv: null,
+		prevImage: null,
+		nextImage: null,
+		prevPoint: null,
+		nextPoint: null,
+		containerGallery: null,
+		separator: ';',
+		zoomMap: 16,
+		centerClick: false,
+		keyPoint: false,
+		timeTip: 200
+	};
+
+function ICSVMap (element, options) {
+
+	this.element = element;
+	this.options = $.extend({}, defaults, options);
+	this.el = element;
+	this.csv = {};
+
+	this.init();
+
+}
+
+ICSVMap.prototype = {
+
+	init: function() {
+
+		var ctx = this;
+
+		$.get(this.options.csv).always(function(r) {
+			
+			ctx.init2($.csv.toObjects(r.responseText, {separator:ctx.options.separator}));
+
+		});
+
+
+		// TEMPORARIAMENTE SEM TRABALHAR 
+		//function trataRetornoCSV (d) {
+
+			//var p = d.split("\r\n");
+			//var csv = [];
+
+			//var campos = p[0].split(ctx.options.separator);
+			//var totalCampos = campos.length;
+			
+
+			//p.pop();
+			//p.shift();
+
+			//var totalLinhas = p.length;
+
+			//for(var i = 0; i < totalLinhas; i++){
+
+				//var tempObj = {};
+
+				//for (var j = 0; j < totalCampos; j++) {
+
+					//var tempC = campos[j].toLowerCase();
+
+					//if(tempC === 'imagem') {
+						//tempObj[tempC] = p[i].split(ctx.options.separator)[j].replace(/(\r|\n)*/g, '').split(',');
+					//} else {
+						//tempObj[tempC] = p[i].split(ctx.options.separator)[j].replace(/(\r|\n)*/g, '');
+					//}
+				//}
+
+				//csv.push(tempObj);
+
+
+			//}
+			//return csv;
+		//}
+		
+
+	},
+
+	init2: function(csv) {
+
+
+		this.infoWindow = new google.maps.InfoWindow({
+			maxWidth:40
+		});
+
+		this.csv = $(csv);
+		
+		this.atual = 0;
+		this.imgAtual = 0;
+		this.pontoAtual = 0;
+
+		this.matchCoord = /^([-]?[0-9]{2}\.[0-9]+$)/;
+
+		this.markers = [];
+
+		var ctx = this;
+
+		var timeout;
+
+		var mapOptions = {
+		      zoom: this.options.zoomMap,
+		      center: new google.maps.LatLng(this.formatCoord(this.csv[0].latitude), this.formatCoord(this.csv[0].longitude)),
+		      mapTypeId: google.maps.MapTypeId.ROADMAP
+		    };
+
+		this.map = new google.maps.Map(this.element, mapOptions);
+
+		/* EVENTOS */
+		
+
+		// MOVER ENTRE OS PONTOS PELAS TECLAS DO TECLADO
+		if(this.options.keyPoint){
+			$(window).on('keyup', function(event) {
+				if(event.keyCode === 37) {
+					event.preventDefault();
+
+					ctx.atual = ctx.verificaPontoAnterior( --ctx.atual );
+
+					ctx.imgAtual = 0;
+
+					ctx.trocaImagemGaleria(ctx.imgAtual);
+					ctx.escreveInfoWindow( ctx.atual );
+					
+				} else if (event.keyCode === 39){
+					event.preventDefault();
+
+					ctx.atual = ctx.verificaProximoPonto( ++ctx.atual );
+
+					ctx.imgAtual = 0;
+
+					ctx.trocaImagemGaleria(ctx.imgAtual);
+					ctx.escreveInfoWindow( ctx.atual );
+
+				}
+			});
+
+		}
+
+
+		// PONTO ANTERIOR
+		if(this.options.prevPoint){
+			$(this.options.prevPoint).on('click', function(event) {
+				event.preventDefault();
+
+				ctx.atual = ctx.verificaPontoAnterior( --ctx.atual );
+
+				ctx.imgAtual = 0;
+				ctx.trocaImagemGaleria(ctx.imgAtual);
+				ctx.escreveInfoWindow( ctx.atual );
+				
+			});
+		}
+
+		// PRÓXIMO PONTO
+		if(this.options.nextPoint){
+			$(this.options.nextPoint).on('click', function(event) {
+				event.preventDefault();				
+
+				ctx.imgAtual = 0;
+
+				ctx.atual = ctx.verificaProximoPonto( ++ctx.atual );
+
+				ctx.trocaImagemGaleria(ctx.imgAtual);
+				ctx.escreveInfoWindow( ctx.atual );
+				
+			});
+		}
+
+		if(this.options.prevImage){
+			$(this.options.prevImage).on('click', function(event) {
+				event.preventDefault();
+
+				--ctx.imgAtual;
+
+				ctx.trocaImagemGaleria(ctx.imgAtual);
+
+			});
+		}
+
+		if(this.options.nextImage){
+			$(this.options.nextImage).on('click', function(event) {
+				event.preventDefault();
+
+				++ctx.imgAtual;
+				ctx.trocaImagemGaleria(ctx.imgAtual);
+			});
+		}
+
+		var interval = 1000;
+
+		this.csv.each(function(i) {
+
+
+			var csvTemp = ctx.csv[i];
+
+			// ADICIONA NO OBJETO QUANTAS IMAGENS TEM EM CADA PONTO
+			csvTemp['qtdImagens'] = csvTemp.imagem.split(',').length;
+			
+			csvTemp['imagem'] = csvTemp['imagem'].split(',');
+
+			var icon = csvTemp.icone === "" ? null : csvTemp.icone;
+
+			// CRIA MARCADOR
+			var newMarker = new google.maps.Marker({
+				position: new google.maps.LatLng(ctx.formatCoord(this.latitude), ctx.formatCoord(this.longitude)),
+				title: this.titulo,
+				map:ctx.map,
+				animation: google.maps.Animation.DROP,
+				icon: icon
+			});
+			
+
+			// ATRIBUI IDENTIFICADOR AO MACADOR
+			newMarker.id = i;
+
+			ctx.markers.push(newMarker);
+
+
+			// EVENTOS DO MAPA
+			google.maps.event.addListener(newMarker, 'mouseover', function() {
+				ctx.atual = this.id;				
+
+				clearTimeout(timeout);
+
+				timeout = setTimeout(function(){
+					if(ctx.options.centerClick){
+						ctx.map.setCenter(this.getPosition());
+					}
+						
+					ctx.escreveInfoWindow(ctx.atual);
+				}, ctx.options.timeTip);
+			});
+
+			google.maps.event.addListener(newMarker, 'mouseout', function() {
+				ctx.infoWindow.close();
+			});
+
+
+			google.maps.event.addListener(newMarker, 'click', function() {
+				ctx.atual = this.id;
+				
+				if(ctx.options.centerClick)
+					ctx.map.setCenter(this.getPosition());
+
+
+				ctx.trocaImagemGaleria(0);
+				ctx.escreveInfoWindow(ctx.atual);
+			});
+
+		});		
+		 
+	},
+
+	verificaProximoPonto: function(prox) {
+		if(prox >= this.markers.length){
+			return 0;
+		}
+
+		return prox;
+	},
+
+	verificaPontoAnterior: function(ant) {
+		if(ant < 0){
+			return this.markers.length-1;
+		}
+		return ant;
+	},
+
+
+	trocaImagemGaleria: function(prox) {
+		if(this.options.containerGallery){
+
+			if(prox >= this.csv[this.atual].qtdImagens)
+				prox = 0;
+			else if(prox < 0)
+				prox = this.csv[this.atual].qtdImagens-1;
+
+			this.imgAtual = prox;
+
+			$(this.options.containerGallery).html('<img src="'+ this.csv[this.atual].imagem[this.imgAtual] +'" alt="" />');
+		
+		}
+	},
+
+	escreveInfoWindow: function(id) {
+		
+		var content = "<h3>" + this.csv[id].titulo + "</h3><br /><br /> <div id='verifica'></div> <img style='max-width:100%; height:auto' src='"+ this.csv[id]['imagem'][0] +"' alt='' />";
+
+		
+		this.infoWindow.setPosition(this.markers[id].getPosition());
+		
+		this.infoWindow.setContent(content);
+		this.infoWindow.open(this.map);
+	},
+
+	formatCoord: function(coord) {
+
+		if(this.matchCoord.test(coord)) return coord;
+
+		coord = coord.replace(/[^\d\-]/g, "");
+		var ar1, ar2;
+
+		if(coord[0] === '-'){
+			ar1 = coord.slice(0, 3);
+			ar2 = coord.slice(3);
+			
+		} else {
+			ar1 = coord.slice(0, 2);
+			ar2 = coord.slice(2);
+		}
+
+		coord = ar1 + '.' + ar2;
+		return coord;
+	}
+
+	
+};
+
+$.fn['icsvmap'] = function(options) {
+	this.each(function() {
+		if(!$.data(this, pluginName)){
+			$.data(this, pluginName, new ICSVMap(this, options));
+		}
+	});
+}
+
+})(jQuery, window, document);
