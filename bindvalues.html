@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Bindvalues - O Globo - Ayrton Teshima</title>
+	<script>
+	// Ayrton Teshima
+	function bindValues () {
+
+		if(arguments.length<=0) return "";
+
+		var str = arguments[0];
+		var rgx;
+
+		for (var i = 1, len = arguments.length; i < len; i++) {
+
+			rgx = new RegExp("\\\$"+i, "g");
+			str = str.replace(rgx, arguments[i]);
+		};
+
+		return str;
+
+	}
+
+	// EXAMPLES
+
+	var values = ["http://www.ayrtonteshima.com.br", "Ayrton Teshima"];
+	var str = bindValues('<a href="$1" title="$2">$2</a><p>$1</p><strong>$3</strong>', values[0], values[1], "testando..");
+	console.log(str);
+	</script>
+</head>
+<body>
+	
+</body>
+</html>
