@@ -5,7 +5,6 @@ function getParam (key) {
         return null;
 
     var v = q.split("&");
-    var params = {};
     var vn=[];
 
     for (var i = 0; i < v.length; i++) {
